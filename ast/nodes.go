@@ -13,7 +13,7 @@ import (
 type Node interface {
 	Type() NodeType
 	String() string
-	PosInfo() *PosInfo
+	Pos() *PosInfo
 	Len() int
 	Offset(offset int) *PosInfo
 }
@@ -35,7 +35,7 @@ type PosInfo struct {
 	Column int
 }
 
-func (p PosInfo) PosInfo() *PosInfo { return &p }
+func (p PosInfo) Pos() *PosInfo { return &p }
 
 func (p PosInfo) String() string {
 	return fmt.Sprintf("%s:%d:%d", p.Name, p.Line, p.Column)

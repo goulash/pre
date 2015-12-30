@@ -4,7 +4,7 @@
 
 package ast
 
-import "github.com/cassava/dromi/script/lex"
+import "github.com/goulash/lex"
 
 const (
 	// We continue where the reserved types left off
