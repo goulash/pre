@@ -60,8 +60,15 @@ func (p *parser) lexComment(l *lex.Lexer) lex.StateFn {
 	c := p.commenters.First(l.Input(0))
 
 	l.Inc(len(c.Begin))
-	for !l.Consume(c.End) && l.Next() != lex.EOF {
+	var end = c.End
+	if end == "" {
+		end = "\n"
+	}
+	for !l.Consume(end) && l.Next() != lex.EOF {
 		// absorb as long as we don't hit EOF or end-of-comment
+	}
+	if c.End == "" {
+		l.Dec(1)
 	}
 
 	if c.Strip {

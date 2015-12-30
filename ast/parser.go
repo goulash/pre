@@ -132,19 +132,20 @@ func (p *parser) parseAction(r *lex.Reader) (parseFn, error) {
 
 	switch cmd := tok.Value; cmd {
 	case "include":
-		return p.parseInclude, nil
+		return p.parseCmdInclude, nil
 	case "require":
-		return p.parseRequire, nil
+		return p.parseCmdRequire, nil
+	case "error":
+		return p.parseCmdError, nil
 	default:
 		return nil, fmt.Errorf("unknown command %s", cmd)
 	}
 }
 
-func (p *parser) parseInclude(r *lex.Reader) (parseFn, error) {
+func (p *parser) parseCmdInclude(r *lex.Reader) (parseFn, error) {
 	pi := posInfo(r)
-	arg := r.Next()
-	end := r.Next()
-	if arg.Type != TypeString || end.Type != TypeActionEnd {
+	args, ok := r.Expect(TypeString, TypeActionEnd)
+	if !ok {
 		return nil, fmt.Errorf("command include takes a single string argument")
 	}
 
@@ -152,15 +153,24 @@ func (p *parser) parseInclude(r *lex.Reader) (parseFn, error) {
 }
 
 // this is best effort require at the moment. There are several ways to work around this.
-func (p *parser) parseRequire(r *lex.Reader) (parseFn, error) {
+func (p *parser) parseCmdRequire(r *lex.Reader) (parseFn, error) {
 	pi := posInfo(r)
-	arg := r.Next()
-	end := r.Next()
-	if arg.Type != TypeString || end.Type != TypeActionEnd {
+	args, ok := r.Expect(TypeString, TypeActionEnd)
+	if !ok {
 		return nil, fmt.Errorf("command require takes a single string argument")
 	}
 
-	return p.parseNext, p.parseFile(arg.Value, pi, true)
+	return p.parseNext, p.parseFile(args[0].Value, pi, true)
+}
+
+func (p *parser) parseCmdError(r *lex.Reader) (parseFn, error) {
+	pi := posInfo(r)
+	args, ok := r.Expect(TypeString, TypeActionEnd)
+	if !ok {
+		return nil, fmt.Errorf("command error takes a single string argument")
+	}
+
+	return nil, errors.New(args[0].Value)
 }
 
 func posInfo(r *lex.Reader) PosInfo {
