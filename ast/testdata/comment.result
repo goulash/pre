@@ -1,0 +1,20 @@
+This file checks whether certain comments are ignored.
+
+
+
+When the above comment is stripped, the end-of-line should not
+be stripped with it. (Too bad, because this would make the
+mplementation particularly elegant.) While this would be
+acceptable (even desirable) for entire-line comments, it
+would be problematic for code like this:
+
+    int i = 4 
+    *p.next
+
+So how do C comments fare?
+
+    int main(int , char ** ) {
+        return 0;
+    }
+
+EOF
