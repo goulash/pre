@@ -17,6 +17,7 @@ type Node interface {
 	Pos() *PosInfo
 	Len() int
 	Offset(offset int) *PosInfo
+	OffsetLC(line, col int) *PosInfo
 }
 
 // The NodeType data type describes the type of a Node.
@@ -81,6 +82,19 @@ func (p PosInfo) OffsetIn(data string, offset int) *PosInfo {
 	return pi
 }
 
+func (p PosInfo) OffsetInLC(data string, line, col int) *PosInfo {
+	line, col = line-1, col-1
+	if strings.Count(data, "\n") <= line {
+		return nil
+	}
+
+	return &PosInfo{
+		Name:   p.Name,
+		Line:   p.Line + line,
+		Column: p.Column + col,
+	}
+}
+
 // }}}
 
 // TextNode {{{
@@ -90,10 +104,11 @@ type TextNode struct {
 	val string
 }
 
-func (n TextNode) Type() NodeType             { return TextType }
-func (n TextNode) String() string             { return n.val }
-func (n TextNode) Len() int                   { return len(n.val) }
-func (n TextNode) Offset(offset int) *PosInfo { return n.OffsetIn(n.val, offset) }
+func (n TextNode) Type() NodeType                  { return TextType }
+func (n TextNode) String() string                  { return n.val }
+func (n TextNode) Len() int                        { return len(n.val) }
+func (n TextNode) Offset(offset int) *PosInfo      { return n.OffsetIn(n.val, offset) }
+func (n TextNode) OffsetLC(line, col int) *PosInfo { return n.OffsetInLC(n.val, line, col) }
 
 // }}}
 
@@ -105,10 +120,11 @@ type CommentNode struct {
 	c   *Commenter
 }
 
-func (n CommentNode) Type() NodeType             { return CommentType }
-func (n CommentNode) String() string             { return n.val }
-func (n CommentNode) Len() int                   { return len(n.val) }
-func (n CommentNode) Offset(offset int) *PosInfo { return n.OffsetIn(n.val, offset) }
+func (n CommentNode) Type() NodeType                  { return CommentType }
+func (n CommentNode) String() string                  { return n.val }
+func (n CommentNode) Len() int                        { return len(n.val) }
+func (n CommentNode) Offset(offset int) *PosInfo      { return n.OffsetIn(n.val, offset) }
+func (n CommentNode) OffsetLC(line, col int) *PosInfo { return n.OffsetInLC(n.val, line, col) }
 
 // }}}
 
@@ -138,6 +154,18 @@ func (fn FileNode) Len() int {
 		total += n.Len()
 	}
 	return total
+}
+
+func (fn FileNode) OffsetLC(line, col int) *PosInfo {
+	for _, n := range fn.nodes {
+		pi := n.OffsetLC(line, col)
+		if pi != nil {
+			return pi
+		}
+		// TODO: make this more efficient!
+		line -= strings.Count(n.String(), "\n")
+	}
+	return nil
 }
 
 func (fn FileNode) Offset(offset int) *PosInfo {
