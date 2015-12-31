@@ -54,7 +54,37 @@ func testParser(z *testing.T, path string) {
 		return
 	}
 
-	if n.String() != r.String() {
-		z.Errorf("processed test did not match result\nGOT:\n%s\n\nEXPECTED:\n%s\n", n.String(), r.String())
+	ns, rs := n.String(), r.String()
+	if ns == "" || rs == "" {
+		z.Errorf("neither test nor exp. result should be empty string")
+	} else if ns != rs {
+		z.Errorf("processed test did not match result\nGOT:\n%s\n\nEXPECTED:\n%s\n", ns, rs)
+	}
+}
+
+var tests = []struct {
+	Test string
+	Exp  string
+}{
+	{"// Comments will be stripped\nBut the rest of the file should remain.\n",
+		"\nBut the rest of the file should remain.\n"},
+}
+
+func TestSimple(z *testing.T) {
+	p := New()
+	p.AddCommenter(CppComment, true)
+
+	for _, t := range tests {
+		n, err := p.ParseString("internal", t.Test)
+		if err != nil {
+			z.Error(err)
+		}
+		if n.Len() == 0 {
+			z.Errorf("ParseString(%q).Len() == 0, want > 0", t.Test)
+			continue
+		}
+		if n.String() != t.Exp {
+			z.Errorf("ParseString(%q) = %q, want %q", t.Test, n.String(), t.Exp)
+		}
 	}
 }

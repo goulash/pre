@@ -11,14 +11,42 @@ const (
 	typeText lex.Type = (lex.TypeEOF + 1) + iota
 	typeComment
 
-	typeExclamation // '!'
-	typeSlash       // '/'
-
 	typeActionBegin
 	typeActionEnd
 	typeIdent
 	typeString
+
+	typeExclamation // '!'
+	typeSlash       // '/'
 )
+
+// stringOfType is useful for debugging.
+func stringOfType(t lex.Type) string {
+	switch t {
+	case typeText:
+		return "text"
+	case typeComment:
+		return "comment"
+	case typeActionBegin:
+		return "_begin"
+	case typeActionEnd:
+		return "_end"
+	case typeIdent:
+		return "_ident"
+	case typeString:
+		return "_string"
+	case typeExclamation:
+		return "_exclam"
+	case typeSlash:
+		return "_slash"
+	case lex.TypeError:
+		return "error"
+	case lex.TypeEOF:
+		return "eof"
+	default:
+		return "unknown"
+	}
+}
 
 // lexText scans until an action of the end of the text.
 // lexText expects to start at the beginning of a line.

@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+// The Node interface is implemented by all nodes in the AST.
 type Node interface {
 	Type() NodeType
 	String() string
@@ -18,25 +19,47 @@ type Node interface {
 	Offset(offset int) *PosInfo
 }
 
+// The NodeType data type describes the type of a Node.
 type NodeType int
 
 const (
-	ErrorType NodeType = iota
-	FileType
-	TextType
-	CommentType
+	ErrorType   NodeType = iota // ErrorType is the default type, not an actual node type.
+	FileType                    // FileType contains text or comment nodes
+	TextType                    // TextType contains text
+	CommentType                 // CommentType contains a comment
 )
+
+func (t NodeType) String() string {
+	switch t {
+	case ErrorType:
+		return "error"
+	case FileType:
+		return "file"
+	case TextType:
+		return "text"
+	case CommentType:
+		return "comment"
+	default:
+		return "unknown"
+	}
+}
 
 // PosInfo {{{
 
+// The PosInfo data type describes text positions in the original file.
 type PosInfo struct {
 	Name   string
 	Line   int
 	Column int
 }
 
+// Pos returns itself, useful for composition.
 func (p PosInfo) Pos() *PosInfo { return &p }
 
+// String returns the standard string representation of position information:
+//
+//  name:line:column
+//
 func (p PosInfo) String() string {
 	return fmt.Sprintf("%s:%d:%d", p.Name, p.Line, p.Column)
 }
@@ -99,7 +122,7 @@ type FileNode struct {
 	nodes []Node
 }
 
-func (n FileNode) Type() NodeType { return FileType }
+func (fn FileNode) Type() NodeType { return FileType }
 
 func (fn FileNode) String() string {
 	var buf bytes.Buffer
