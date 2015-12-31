@@ -20,7 +20,14 @@ var (
 	errRequireIgnore = errors.New("ignoring file because already read")
 )
 
-type parseFn func(*lex.Reader) (parseFn, error)
+type Error struct {
+	Err     error
+	PosInfo PosInfo
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("%s: %v", e.PosInfo, e.Err)
+}
 
 type Parser struct {
 	Trigger         string
@@ -53,12 +60,17 @@ func (p *Parser) ParseString(name, code string) (err error) {
 	r := lex.NewReader(lex.Lex(name, string(code), p.lexText))
 	for fn := p.parseNext; fn != nil; {
 		fn, err = fn(r)
-		if err != nil {
+		if err != nil && err != errRequireIgnore {
 			break
 		}
 	}
+	if err != nil {
+		err = &Error{err, posInfo(r)}
+	}
 	return
 }
+
+type parseFn func(*lex.Reader) (parseFn, error)
 
 func (p *Parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
 	if p.includeDepth >= p.MaxIncludeDepth {
@@ -114,7 +126,7 @@ func (p *Parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
 		}
 	}
 	if err != nil {
-		err = fmt.Errorf("%s: %s", posInfo(r), err)
+		err = &Error{err, posInfo(r)}
 	}
 	p.includeDepth--
 	if p.nod.root != nil {
