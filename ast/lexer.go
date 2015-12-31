@@ -8,13 +8,16 @@ import "github.com/goulash/lex"
 
 const (
 	// We continue where the reserved types left off
-	TypeText lex.Type = (lex.TypeEOF + 1) + iota
-	TypeComment
+	typeText lex.Type = (lex.TypeEOF + 1) + iota
+	typeComment
 
-	TypeActionBegin
-	TypeActionEnd
-	TypeIdent
-	TypeString
+	typeExclamation // '!'
+	typeSlash       // '/'
+
+	typeActionBegin
+	typeActionEnd
+	typeIdent
+	typeString
 )
 
 // lexText scans until an action of the end of the text.
@@ -23,10 +26,10 @@ func (p *Parser) lexText(l *lex.Lexer) lex.StateFn {
 	for {
 		n := l.AcceptRun(lex.Space)
 		// We accept the trigger if the rune before the whitespace is a newline.
-		if l.HasPrefix(p.Trigger) && l.Input(-n - 1)[0] == '\n' {
+		if l.HasPrefix(p.Trigger) && (l.Pos() == n || l.Input(-n - 1)[0] == '\n') {
 			l.Dec(n) // don't include leading space in text
 			if l.Len() > 0 {
-				l.Emit(TypeText)
+				l.Emit(typeText)
 			}
 			l.Inc(n)
 			l.Ignore()
@@ -34,7 +37,7 @@ func (p *Parser) lexText(l *lex.Lexer) lex.StateFn {
 		}
 		if p.Commenters.IsComment(l.Input(0)) {
 			if l.Len() > 0 {
-				l.Emit(TypeText)
+				l.Emit(typeText)
 			}
 			return p.lexComment
 		}
@@ -47,7 +50,7 @@ func (p *Parser) lexText(l *lex.Lexer) lex.StateFn {
 	}
 	// Correctly reached EOF.
 	if l.Len() > 0 {
-		l.Emit(TypeText)
+		l.Emit(typeText)
 	}
 	l.Emit(lex.TypeEOF)
 	return nil
@@ -74,7 +77,7 @@ func (p *Parser) lexComment(l *lex.Lexer) lex.StateFn {
 	if c.Strip {
 		l.Ignore()
 	} else {
-		l.Emit(TypeComment)
+		l.Emit(typeComment)
 	}
 	// If we exited because of EOF, then Peek will also return EOF.
 	if l.Peek() == lex.EOF {
@@ -86,7 +89,7 @@ func (p *Parser) lexComment(l *lex.Lexer) lex.StateFn {
 
 func (p *Parser) lexActionBegin(l *lex.Lexer) lex.StateFn {
 	l.Inc(len(p.Trigger))
-	l.Emit(TypeActionBegin)
+	l.Emit(typeActionBegin)
 	return p.lexInsideAction
 }
 
@@ -94,7 +97,7 @@ func (p *Parser) lexActionEnd(l *lex.Lexer) lex.StateFn {
 	if !(l.Consume("\n") || l.Consume("\r\n")) {
 		return l.Errorf("malformed end-of-line")
 	}
-	l.Emit(TypeActionEnd)
+	l.Emit(typeActionEnd)
 	return p.lexText
 }
 
@@ -113,6 +116,7 @@ func (p *Parser) lexQuote(l *lex.Lexer) lex.StateFn {
 	if l.Next() != '"' {
 		return l.Errorf("only support double-quoted strings")
 	}
+	l.Ignore()
 
 loop:
 	for {
@@ -128,7 +132,10 @@ loop:
 			break loop
 		}
 	}
-	l.Emit(TypeString)
+	l.Dec(1)
+	l.Emit(typeString)
+	l.Inc(1)
+	l.Ignore()
 	return p.lexInsideAction
 }
 
@@ -142,6 +149,14 @@ func (p *Parser) lexInsideAction(l *lex.Lexer) lex.StateFn {
 		return p.lexQuote
 	case lex.IsAlphaNumeric(r):
 		return p.lexAlphaNumeric
+	case r == '!':
+		l.Next()
+		l.Emit(typeExclamation)
+		return p.lexInsideAction
+	case r == '/':
+		l.Next()
+		l.Emit(typeSlash)
+		return p.lexInsideAction
 	case r == lex.EOF:
 		return l.Errorf("unexpected EOF")
 	default:
@@ -151,6 +166,6 @@ func (p *Parser) lexInsideAction(l *lex.Lexer) lex.StateFn {
 
 func (p *Parser) lexAlphaNumeric(l *lex.Lexer) lex.StateFn {
 	l.AcceptFuncRun(lex.IsAlphaNumeric)
-	l.Emit(TypeIdent)
+	l.Emit(typeIdent)
 	return p.lexInsideAction
 }

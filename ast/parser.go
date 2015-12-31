@@ -23,10 +23,8 @@ var (
 type parseFn func(*lex.Reader) (parseFn, error)
 
 type Parser struct {
-	// trigger and commenters are used by the lex* methods
-	Trigger    string
-	Commenters Commenters
-
+	Trigger         string
+	Commenters      Commenters
 	MaxIncludeDepth int
 
 	nod          *FileNode
@@ -34,10 +32,17 @@ type Parser struct {
 	includeDepth int             // include depth
 }
 
+// Root returns the root node in the AST.
+func (p *Parser) Root() *FileNode {
+	return p.nod
+}
+
+// Parse parses a file and returns an error if one occurs.
 func (p *Parser) Parse(path string) error {
 	return p.parseFile(path, PosInfo{Name: path}, true)
 }
 
+// ParseString parses a string as the root node.
 func (p *Parser) ParseString(name, code string) (err error) {
 	p.nod = &FileNode{
 		PosInfo: PosInfo{Name: name},
@@ -53,10 +58,6 @@ func (p *Parser) ParseString(name, code string) (err error) {
 		}
 	}
 	return
-}
-
-func (p *Parser) Root() *FileNode {
-	return p.nod
 }
 
 func (p *Parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
@@ -85,7 +86,9 @@ func (p *Parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
 	// mounted in different places, we will not catch it. But
 	// then again, maybe we should just accept that.
 	if unique {
-		if p.files[path] {
+		if p.files == nil {
+			p.files = make(map[string]bool)
+		} else if p.files[path] {
 			// We already read this file, ignore it.
 			return errRequireIgnore
 		}
@@ -110,6 +113,9 @@ func (p *Parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
 			break
 		}
 	}
+	if err != nil {
+		err = fmt.Errorf("%s: %s", posInfo(r), err)
+	}
 	p.includeDepth--
 	if p.nod.root != nil {
 		p.nod = p.nod.root
@@ -120,11 +126,11 @@ func (p *Parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
 func (p *Parser) parseNext(r *lex.Reader) (parseFn, error) {
 	tok := r.Peek()
 	switch tok.Type {
-	case TypeText:
+	case typeText:
 		return p.parseText, nil
-	case TypeComment:
+	case typeComment:
 		return p.parseComment, nil
-	case TypeActionBegin:
+	case typeActionBegin:
 		return p.parseAction, nil
 	case lex.TypeError:
 		return nil, errors.New(tok.Value)
@@ -148,9 +154,36 @@ func (p *Parser) parseComment(r *lex.Reader) (parseFn, error) {
 	return p.parseNext, nil
 }
 
+func (p *Parser) parseShebang(r *lex.Reader) (parseFn, error) {
+	_, ok := r.Expect(typeExclamation, typeSlash)
+	pi := posInfo(r)
+	if !ok {
+		return nil, errors.New("shebang paths are absolute, expecting slash '/'")
+	}
+
+	if pi.Line != 1 {
+		return nil, errors.New("shebang only valid on first line of file")
+	}
+
+	for tok := r.Next(); tok.Type != typeActionEnd; tok = r.Next() {
+		// shebang has nothing to do with us, so we consume until it's over.
+		if tok.Type == lex.TypeEOF {
+			return nil, errors.New("unexpected EOF")
+		}
+	}
+	return p.parseNext, nil
+}
+
 func (p *Parser) parseAction(r *lex.Reader) (parseFn, error) {
+	r.Next() // trigger token
+
+	// If the token afterwards is !, then it could be something like #!/usr/bin/env
+	if r.Peek().Type == typeExclamation {
+		return p.parseShebang, nil
+	}
+
 	tok := r.Next()
-	if tok.Type != TypeIdent {
+	if tok.Type != typeIdent {
 		return nil, errors.New("expecting command identifier")
 	}
 
@@ -168,33 +201,34 @@ func (p *Parser) parseAction(r *lex.Reader) (parseFn, error) {
 
 func (p *Parser) parseCmdInclude(r *lex.Reader) (parseFn, error) {
 	pi := posInfo(r)
-	args, ok := r.Expect(TypeString, TypeActionEnd)
+	args, ok := r.Expect(typeString, typeActionEnd)
 	if !ok {
-		return nil, fmt.Errorf("command include takes a single string argument")
+		return nil, errors.New("command include takes a single string argument")
 	}
 
-	return p.parseNext, p.parseFile(args[0].Value, pi, false)
+	path := filepath.Join(filepath.Dir(p.nod.name), args[0].Value)
+	return p.parseNext, p.parseFile(path, pi, false)
 }
 
 // this is best effort require at the moment. There are several ways to work around this.
 func (p *Parser) parseCmdRequire(r *lex.Reader) (parseFn, error) {
 	pi := posInfo(r)
-	args, ok := r.Expect(TypeString, TypeActionEnd)
+	args, ok := r.Expect(typeString, typeActionEnd)
 	if !ok {
-		return nil, fmt.Errorf("command require takes a single string argument")
+		return nil, errors.New("command require takes a single string argument")
 	}
 
-	return p.parseNext, p.parseFile(args[0].Value, pi, true)
+	path := filepath.Join(filepath.Dir(p.nod.name), args[0].Value)
+	return p.parseNext, p.parseFile(path, pi, true)
 }
 
 func (p *Parser) parseCmdError(r *lex.Reader) (parseFn, error) {
-	pi := posInfo(r)
-	args, ok := r.Expect(TypeString, TypeActionEnd)
+	args, ok := r.Expect(typeString, typeActionEnd)
 	if !ok {
-		return nil, fmt.Errorf("command error takes a single string argument")
+		return nil, errors.New("command error takes a single string argument")
 	}
 
-	return nil, fmt.Errorf("%s: %s", pi, args[0].Value)
+	return nil, errors.New(args[0].Value)
 }
 
 func posInfo(r *lex.Reader) PosInfo {

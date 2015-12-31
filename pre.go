@@ -38,10 +38,29 @@ func New() *Processor {
 	}
 }
 
+func (p *Processor) AddCommenter(c *ast.Commenter, strip bool) {
+	c.Strip = strip
+	p.Commenters = append(p.Commenters, c)
+}
+
 func (p *Processor) Parse(path string) (ast.Node, error) {
-	return nil, nil
+	parser := newParser(p)
+	err := parser.Parse(path)
+	nod := parser.Root()
+	return nod, err
 }
 
 func (p *Processor) ParseString(name, code string) (ast.Node, error) {
-	return nil, nil
+	parser := newParser(p)
+	err := parser.ParseString(name, code)
+	nod := parser.Root()
+	return nod, err
+}
+
+func newParser(p *Processor) *ast.Parser {
+	return &ast.Parser{
+		Trigger:         p.Trigger,
+		MaxIncludeDepth: p.MaxIncludeDepth,
+		Commenters:      p.Commenters,
+	}
 }

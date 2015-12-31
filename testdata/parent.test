@@ -3,4 +3,4 @@ This parent text should contain the child text, which contains:
     This is the child text, included by the parent file.
     EOF
 
-#include "child.txt"
+#include "child.test"
