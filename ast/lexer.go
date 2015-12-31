@@ -19,11 +19,11 @@ const (
 
 // lexText scans until an action of the end of the text.
 // lexText expects to start at the beginning of a line.
-func (p *parser) lexText(l *lex.Lexer) lex.StateFn {
+func (p *Parser) lexText(l *lex.Lexer) lex.StateFn {
 	for {
 		n := l.AcceptRun(lex.Space)
 		// We accept the trigger if the rune before the whitespace is a newline.
-		if l.HasPrefix(p.trigger) && l.Input(-n - 1)[0] == '\n' {
+		if l.HasPrefix(p.Trigger) && l.Input(-n - 1)[0] == '\n' {
 			l.Dec(n) // don't include leading space in text
 			if l.Len() > 0 {
 				l.Emit(TypeText)
@@ -32,7 +32,7 @@ func (p *parser) lexText(l *lex.Lexer) lex.StateFn {
 			l.Ignore()
 			return p.lexActionBegin
 		}
-		if p.commenters.IsComment(l.Input(0)) {
+		if p.Commenters.IsComment(l.Input(0)) {
 			if l.Len() > 0 {
 				l.Emit(TypeText)
 			}
@@ -55,9 +55,9 @@ func (p *parser) lexText(l *lex.Lexer) lex.StateFn {
 
 // lexComment scans a comment, because the trigger doesn't count in a comment.
 // The comment includes the //, /* */, or whatever.
-func (p *parser) lexComment(l *lex.Lexer) lex.StateFn {
+func (p *Parser) lexComment(l *lex.Lexer) lex.StateFn {
 	// Find out which kind of comment we have, so we know how to deal with it.
-	c := p.commenters.First(l.Input(0))
+	c := p.Commenters.First(l.Input(0))
 
 	l.Inc(len(c.Begin))
 	var end = c.End
@@ -84,13 +84,13 @@ func (p *parser) lexComment(l *lex.Lexer) lex.StateFn {
 	return p.lexText
 }
 
-func (p *parser) lexActionBegin(l *lex.Lexer) lex.StateFn {
-	l.Inc(len(p.trigger))
+func (p *Parser) lexActionBegin(l *lex.Lexer) lex.StateFn {
+	l.Inc(len(p.Trigger))
 	l.Emit(TypeActionBegin)
 	return p.lexInsideAction
 }
 
-func (p *parser) lexActionEnd(l *lex.Lexer) lex.StateFn {
+func (p *Parser) lexActionEnd(l *lex.Lexer) lex.StateFn {
 	if !(l.Consume("\n") || l.Consume("\r\n")) {
 		return l.Errorf("malformed end-of-line")
 	}
@@ -100,7 +100,7 @@ func (p *parser) lexActionEnd(l *lex.Lexer) lex.StateFn {
 
 // lexSpace scans all spaces. One space may have already been read.
 // It does not emit any space tokens however. We don't have a use for that yet.
-func (p *parser) lexSpace(l *lex.Lexer) lex.StateFn {
+func (p *Parser) lexSpace(l *lex.Lexer) lex.StateFn {
 	l.AcceptFuncRun(lex.IsSpace)
 	l.Ignore()
 	return p.lexInsideAction
@@ -108,7 +108,7 @@ func (p *parser) lexSpace(l *lex.Lexer) lex.StateFn {
 
 // lexQuote scans all the string inside a quote.
 // Only double-quote is supported at the moment.
-func (p *parser) lexQuote(l *lex.Lexer) lex.StateFn {
+func (p *Parser) lexQuote(l *lex.Lexer) lex.StateFn {
 	// lexQuote is called for ', ", and `.
 	if l.Next() != '"' {
 		return l.Errorf("only support double-quoted strings")
@@ -132,7 +132,7 @@ loop:
 	return p.lexInsideAction
 }
 
-func (p *parser) lexInsideAction(l *lex.Lexer) lex.StateFn {
+func (p *Parser) lexInsideAction(l *lex.Lexer) lex.StateFn {
 	switch r := l.Peek(); {
 	case lex.IsEndline(r):
 		return p.lexActionEnd
@@ -149,7 +149,7 @@ func (p *parser) lexInsideAction(l *lex.Lexer) lex.StateFn {
 	}
 }
 
-func (p *parser) lexAlphaNumeric(l *lex.Lexer) lex.StateFn {
+func (p *Parser) lexAlphaNumeric(l *lex.Lexer) lex.StateFn {
 	l.AcceptFuncRun(lex.IsAlphaNumeric)
 	l.Emit(TypeIdent)
 	return p.lexInsideAction

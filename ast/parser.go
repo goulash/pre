@@ -14,30 +14,54 @@ import (
 	"github.com/goulash/lex"
 )
 
-// We limit the recursion depth of includes to an arbitrary value
-// to catch infinite-loops.
-var MaxIncludeDepth int = 128
-
 var (
-	ErrRequireIgnore = errors.New("ignoring file because already read")
+	ErrMaxDepthExceeded = errors.New("maximum include depth exceeded")
+
+	errRequireIgnore = errors.New("ignoring file because already read")
 )
 
 type parseFn func(*lex.Reader) (parseFn, error)
 
-type parser struct {
+type Parser struct {
 	// trigger and commenters are used by the lex* methods
-	trigger    string
-	commenters Commenters
+	Trigger    string
+	Commenters Commenters
 
-	nod *FileNode
+	MaxIncludeDepth int
 
-	files map[string]bool // included file paths
-	depth int             // include depth
+	nod          *FileNode
+	files        map[string]bool // included file paths
+	includeDepth int             // include depth
 }
 
-func (p *parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
-	if p.depth >= MaxIncludeDepth {
-		return errors.New("maximum include depth reached")
+func (p *Parser) Parse(path string) error {
+	return p.parseFile(path, PosInfo{Name: path}, true)
+}
+
+func (p *Parser) ParseString(name, code string) (err error) {
+	p.nod = &FileNode{
+		PosInfo: PosInfo{Name: name},
+		name:    name,
+		path:    "",
+		root:    nil,
+	}
+	r := lex.NewReader(lex.Lex(name, string(code), p.lexText))
+	for fn := p.parseNext; fn != nil; {
+		fn, err = fn(r)
+		if err != nil {
+			break
+		}
+	}
+	return
+}
+
+func (p *Parser) Root() *FileNode {
+	return p.nod
+}
+
+func (p *Parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
+	if p.includeDepth >= p.MaxIncludeDepth {
+		return ErrMaxDepthExceeded
 	}
 
 	bs, err := ioutil.ReadFile(name)
@@ -63,7 +87,7 @@ func (p *parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
 	if unique {
 		if p.files[path] {
 			// We already read this file, ignore it.
-			return ErrRequireIgnore
+			return errRequireIgnore
 		}
 		p.files[path] = true
 	}
@@ -78,22 +102,22 @@ func (p *parser) parseFile(name string, pi PosInfo, unique bool) (err error) {
 		p.nod.addNode(fn)
 	}
 	p.nod = fn
-	p.depth++
+	p.includeDepth++
 	r := lex.NewReader(lex.Lex(name, string(bs), p.lexText))
 	for fn := p.parseNext; fn != nil; {
 		fn, err = fn(r)
-		if err != nil {
+		if err != nil && err != errRequireIgnore {
 			break
 		}
 	}
-	p.depth--
+	p.includeDepth--
 	if p.nod.root != nil {
 		p.nod = p.nod.root
 	}
 	return
 }
 
-func (p *parser) parseNext(r *lex.Reader) (parseFn, error) {
+func (p *Parser) parseNext(r *lex.Reader) (parseFn, error) {
 	tok := r.Peek()
 	switch tok.Type {
 	case TypeText:
@@ -112,19 +136,19 @@ func (p *parser) parseNext(r *lex.Reader) (parseFn, error) {
 	}
 }
 
-func (p *parser) parseText(r *lex.Reader) (parseFn, error) {
+func (p *Parser) parseText(r *lex.Reader) (parseFn, error) {
 	t := r.Next()
 	p.nod.addNode(&TextNode{posInfo(r), t.Value})
 	return p.parseNext, nil
 }
 
-func (p *parser) parseComment(r *lex.Reader) (parseFn, error) {
+func (p *Parser) parseComment(r *lex.Reader) (parseFn, error) {
 	t := r.Next()
-	p.nod.addNode(&CommentNode{posInfo(r), t.Value, p.commenters.First(t.Value)})
+	p.nod.addNode(&CommentNode{posInfo(r), t.Value, p.Commenters.First(t.Value)})
 	return p.parseNext, nil
 }
 
-func (p *parser) parseAction(r *lex.Reader) (parseFn, error) {
+func (p *Parser) parseAction(r *lex.Reader) (parseFn, error) {
 	tok := r.Next()
 	if tok.Type != TypeIdent {
 		return nil, errors.New("expecting command identifier")
@@ -142,18 +166,18 @@ func (p *parser) parseAction(r *lex.Reader) (parseFn, error) {
 	}
 }
 
-func (p *parser) parseCmdInclude(r *lex.Reader) (parseFn, error) {
+func (p *Parser) parseCmdInclude(r *lex.Reader) (parseFn, error) {
 	pi := posInfo(r)
 	args, ok := r.Expect(TypeString, TypeActionEnd)
 	if !ok {
 		return nil, fmt.Errorf("command include takes a single string argument")
 	}
 
-	return p.parseNext, p.parseFile(arg.Value, pi, false)
+	return p.parseNext, p.parseFile(args[0].Value, pi, false)
 }
 
 // this is best effort require at the moment. There are several ways to work around this.
-func (p *parser) parseCmdRequire(r *lex.Reader) (parseFn, error) {
+func (p *Parser) parseCmdRequire(r *lex.Reader) (parseFn, error) {
 	pi := posInfo(r)
 	args, ok := r.Expect(TypeString, TypeActionEnd)
 	if !ok {
@@ -163,14 +187,14 @@ func (p *parser) parseCmdRequire(r *lex.Reader) (parseFn, error) {
 	return p.parseNext, p.parseFile(args[0].Value, pi, true)
 }
 
-func (p *parser) parseCmdError(r *lex.Reader) (parseFn, error) {
+func (p *Parser) parseCmdError(r *lex.Reader) (parseFn, error) {
 	pi := posInfo(r)
 	args, ok := r.Expect(TypeString, TypeActionEnd)
 	if !ok {
 		return nil, fmt.Errorf("command error takes a single string argument")
 	}
 
-	return nil, errors.New(args[0].Value)
+	return nil, fmt.Errorf("%s: %s", pi, args[0].Value)
 }
 
 func posInfo(r *lex.Reader) PosInfo {

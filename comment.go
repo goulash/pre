@@ -4,15 +4,16 @@
 
 package pre
 
+import "github.com/goulash/pre/ast"
+
 var (
 	LispComment = PrefixCommenter(";")
 	CppComment  = PrefixCommenter("//")
 	CComment    = &Commenter{"/*", "*/"}
 )
 
-func PrefixCommenter(prefix string) *Commenter {
-	return &Commenter{
+func PrefixCommenter(prefix string) *ast.Commenter {
+	return &ast.Commenter{
 		Begin: prefix,
-		End:   "\n",
 	}
 }
